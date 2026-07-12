@@ -33,6 +33,8 @@ class MonitorConfig:
     usage_command: tuple[str, ...] = ()
     usage_environment_variable: str = ""
     usage_timeout_seconds: float = 10.0
+    usage_provider: str = "codex"
+    usage_format: str = "codex"
     write_tools_environment: str = "MCP_ENABLE_WRITE_TOOLS=1"
     secret_tools_environment: str = "MCP_ENABLE_SECRET_TOOLS=1"
 
@@ -136,6 +138,13 @@ def _timeout(table: dict[str, Any], key: str, default: float) -> float:
     return float(value)
 
 
+def _choice(table: dict[str, Any], key: str, default: str, choices: set[str]) -> str:
+    value = _string(table, key, default)
+    if value not in choices:
+        raise ConfigError(f"{key} must be one of: {', '.join(sorted(choices))}")
+    return value
+
+
 def _load(path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as handle:
@@ -159,6 +168,11 @@ def load_monitor_config(explicit_path: str | None = None) -> tuple[MonitorConfig
     tunnel = _table(data, "tunnel")
     usage = _table(data, "usage")
     capabilities = _table(data, "capabilities")
+    usage_provider = _choice(usage, "provider", defaults.usage_provider, {"codex", "claude-code"})
+    usage_format = _choice(usage, "format", "codex" if usage_provider == "codex" else "normalized", {"codex", "normalized"})
+    expected_usage_format = "codex" if usage_provider == "codex" else "normalized"
+    if usage_format != expected_usage_format:
+        raise ConfigError(f"format must be {expected_usage_format!r} when provider is {usage_provider!r}")
     config = MonitorConfig(
         name=_string(profile, "name", defaults.name),
         mcp_service=_string(mcp, "service", defaults.mcp_service),
@@ -178,6 +192,8 @@ def load_monitor_config(explicit_path: str | None = None) -> tuple[MonitorConfig
         usage_command=_command(usage),
         usage_environment_variable=_string(usage, "environment_variable", "", allow_empty=True),
         usage_timeout_seconds=_timeout(usage, "timeout_seconds", defaults.usage_timeout_seconds),
+        usage_provider=usage_provider,
+        usage_format=usage_format,
         write_tools_environment=_string(capabilities, "write_environment", "", allow_empty=True),
         secret_tools_environment=_string(capabilities, "secret_environment", "", allow_empty=True),
     )

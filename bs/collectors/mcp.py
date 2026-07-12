@@ -198,6 +198,39 @@ def _summarize_usage_limits(limits: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _provider_label(provider: str) -> str:
+    return {"codex": "Codex", "claude-code": "Claude Code"}.get(provider, provider)
+
+
+def _summarize_normalized_usage(payload: dict[str, Any]) -> dict[str, Any]:
+    windows = payload.get("windows") if isinstance(payload.get("windows"), dict) else {}
+    normalized_windows = {
+        name: {
+            "remaining_percent": value.get("remaining_percent"),
+            "used_percent": value.get("used_percent"),
+            "resets_at": value.get("resets_at"),
+            "window_duration_minutes": value.get("window_duration_minutes"),
+        }
+        for name, value in windows.items()
+        if isinstance(value, dict)
+    }
+    warnings = []
+    for name, window in normalized_windows.items():
+        remaining = window.get("remaining_percent")
+        if isinstance(remaining, (int, float)) and remaining <= 25:
+            warnings.append(f"{name} limit has {remaining:g}% remaining")
+    return {
+        "windows": normalized_windows,
+        "reset_credits_available": payload.get("reset_credits_available"),
+        "plan_type": payload.get("plan_type"),
+        "credit_balance": payload.get("credit_balance"),
+        "latest_daily_date": payload.get("latest_daily_date"),
+        "latest_daily_tokens": payload.get("latest_daily_tokens"),
+        "lifetime_tokens": payload.get("lifetime_tokens"),
+        "warnings": warnings,
+    }
+
+
 _SHELL_EXECUTABLES = {"sh", "bash", "dash", "zsh", "fish"}
 
 
@@ -231,23 +264,31 @@ def _tunnel_usage_probe(config: MonitorConfig) -> dict[str, Any]:
         return {"available": False, "error": "trusted tunnel usage probe returned invalid JSON"}
     if not isinstance(limits, dict):
         return {"available": False, "error": "trusted tunnel usage probe returned an invalid payload"}
-    return {"available": True, "source": source, **_summarize_usage_limits(limits)}
+    summary = _summarize_usage_limits(limits) if config.usage_format == "codex" else _summarize_normalized_usage(limits)
+    return {"available": True, "source": source, "provider": config.usage_provider, "provider_label": _provider_label(config.usage_provider), **summary}
 
 
 def _collect_usage(config: MonitorConfig, use_http: bool = True) -> dict[str, Any]:
+    provider = config.usage_provider
+    provider_fields = {"provider": provider, "provider_label": _provider_label(provider)}
+    if provider == "claude-code":
+        if not (config.usage_command or config.usage_environment_variable):
+            return {"available": False, "disabled": True, **provider_fields, "error": "configure a normalized Claude Code usage command"}
+        result = _tunnel_usage_probe(config)
+        return {**provider_fields, **result}
     if not (config.usage_tool or config.usage_command or config.usage_environment_variable):
-        return {"available": False, "disabled": True, "error": "usage monitoring is not configured"}
+        return {"available": False, "disabled": True, "provider": config.usage_provider, "provider_label": _provider_label(config.usage_provider), "error": "usage monitoring is not configured"}
     if not use_http:
-        return _tunnel_usage_probe(config)
+        return {**provider_fields, **_tunnel_usage_probe(config)}
     if not config.usage_tool:
-        return _tunnel_usage_probe(config)
+        return {**provider_fields, **_tunnel_usage_probe(config)}
     mcp_probe = _mcp_tool_probe(config, config.usage_tool)
     usage = mcp_probe.get("result", {}).get("usage") if mcp_probe.get("ok") else None
     limits = usage.get("limits") if isinstance(usage, dict) else None
     source_probe = usage.get("probe") if isinstance(usage, dict) else None
     if isinstance(limits, dict) and limits and isinstance(source_probe, dict) and source_probe.get("available"):
-        return {"available": True, "source": "HTTP MCP usage tool", **_summarize_usage_limits(limits)}
-    fallback = _tunnel_usage_probe(config)
+        return {"available": True, "source": "HTTP MCP usage tool", "provider": "codex", "provider_label": "Codex", **_summarize_usage_limits(limits)}
+    fallback = {**provider_fields, **_tunnel_usage_probe(config)}
     fallback["http_mcp_error"] = source_probe.get("error") if isinstance(source_probe, dict) else mcp_probe.get("error")
     return fallback
 
@@ -555,9 +596,10 @@ def collect_mcp(
         warnings.append("tunnel MCP target has write tools enabled")
     if target_flags.get("available") and target_flags.get("secret_tools_enabled"):
         warnings.append("tunnel MCP target has secret tools enabled")
+    usage_label = str(usage.get("provider_label") or "Usage")
     if not usage.get("available") and not usage.get("disabled"):
-        warnings.append(f"Codex usage limits unavailable: {usage.get('error') or usage.get('http_mcp_error') or 'unknown reason'}")
-    warnings.extend(f"Codex usage warning: {warning}" for warning in usage.get("warnings", []))
+        warnings.append(f"{usage_label} usage limits unavailable: {usage.get('error') or usage.get('http_mcp_error') or 'unknown reason'}")
+    warnings.extend(f"{usage_label} usage warning: {warning}" for warning in usage.get("warnings", []))
 
     return {
         "_meta": meta("mcp", limited=visibility_limited, reason=warnings[0] if warnings else None, source="systemctl/ss/journal/http", warnings=warnings),

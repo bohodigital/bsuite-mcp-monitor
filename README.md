@@ -9,6 +9,10 @@ MCP servers. It brings service health, local listeners, MCP runtime capability
 state, proxy or tunnel reachability, command telemetry, usage limits, network
 identity, and SSH posture into one practical operator view.
 
+> **Quick description:** a single command-line control room for the Linux host
+> that runs your MCP service, including its health, access posture, network
+> path, and configured Codex or Claude Code usage limits.
+
 It is designed for a single Linux host. It does not run a web service, send
 telemetry, manage MCP configuration, or call write/secret tools.
 
@@ -124,10 +128,12 @@ them. `--lookup-limit N` caps uncached enrichment work; `-1` is unlimited.
 
 ## Optional Usage Limits
 
-When an MCP server provides a read-only usage-limit tool, B-Suite records its
-five-hour and weekly windows, reset times, credits, and token totals. Otherwise
-an operator can configure a local read-only command as an explicit TOML array.
-The command must use an absolute executable path and never runs through a shell.
+When a Codex MCP server provides a read-only usage-limit tool, B-Suite records
+its five-hour and weekly windows, reset times, credits, and token totals.
+Operators can also configure a local read-only command as an explicit TOML
+array. Set `usage.provider = "claude-code"` when monitoring Claude Code; its
+documented CLI has no native read-only usage-limit command, so the configured
+adapter must emit B-Suite's normalized JSON contract.
 
 Usage collection is optional. Keep its command out of version control and treat
 the profile file as operator-owned configuration.

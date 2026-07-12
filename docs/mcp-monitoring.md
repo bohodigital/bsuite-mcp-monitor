@@ -30,6 +30,7 @@ service names; production installations should supply their own file.
 | `[mcp]` | `mode_tool`, `usage_tool` | Optional read-only MCP tools; set either to `""` to disable it. |
 | `[tunnel]` | `service`, `host`, `port`, `health_path`, `metrics_path` | Proxy/tunnel unit and loopback health endpoints. |
 | `[tunnel]` | `process`, `startup_log_match` | Optional process and structured-journal identifiers. |
+| `[usage]` | `provider`, `format` | `codex` uses native Codex usage data; `claude-code` uses a configured normalized adapter. |
 | `[usage]` | `command`, `timeout_seconds` | Optional absolute executable argument list that prints usage JSON. |
 | `[usage]` | `environment_variable` | Optional systemd environment key containing a usage command. Leave empty for new profiles. |
 | `[capabilities]` | `write_environment`, `secret_environment` | Markers used to identify privileged tool settings. |
@@ -52,9 +53,8 @@ between 1 and 65535, and HTTP paths must begin with `/`.
 
 ## Usage Commands
 
-`[usage].command` is intended for a small local adapter that prints the JSON
-shape returned by an MCP usage-limit tool. It must be an argument list, for
-example:
+`[usage].command` is intended for a small local adapter. It must be an argument
+list, for example:
 
 ```toml
 [usage]
@@ -62,6 +62,33 @@ command = ["/usr/local/bin/codex-usage-probe", "--usage"]
 timeout_seconds = 10
 environment_variable = ""
 ```
+
+For Codex, use `provider = "codex"` and `format = "codex"`; B-Suite accepts
+the native limits object returned by the configured MCP tool or Codex adapter.
+
+For Claude Code, use `provider = "claude-code"` and `format = "normalized"`.
+Anthropic's [CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-usage)
+supports scripted JSON output but does not document a read-only usage-limit
+command, so do not call `claude -p` just to ask for limits. Instead, configure a
+provider-owned or operator-owned read-only adapter that emits this JSON shape:
+
+```json
+{
+  "windows": {
+    "5h": {"remaining_percent": 72, "resets_at": 1760000000},
+    "weekly": {"remaining_percent": 91, "resets_at": 1760500000}
+  },
+  "plan_type": "team",
+  "reset_credits_available": 0,
+  "latest_daily_date": "2026-07-12",
+  "latest_daily_tokens": 123456
+}
+```
+
+Install Claude Code using Anthropic's [documented installation
+method](https://docs.anthropic.com/en/docs/claude-code/getting-started), not the
+root-only B-Suite system-tool installer. B-Suite does not install or authenticate
+either AI CLI.
 
 B-Suite requires an absolute executable path, refuses common shell executables,
 sets a timeout, requires the profile not be group/world writable, and renders

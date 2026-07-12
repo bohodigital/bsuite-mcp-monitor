@@ -396,6 +396,7 @@ def _dash_mcp_panel(data: dict[str, Any]) -> Panel:
     tunnel_service = data["services"].get("tunnel", {})
     mode = data.get("mode", {}).get("result", {})
     usage = data.get("usage", {})
+    usage_provider = str(usage.get("provider_label") or "Usage")
     target_flags = data["target"].get("security_flags", {})
     target_capabilities = "unavailable"
     if target_flags.get("available"):
@@ -425,7 +426,7 @@ def _dash_mcp_panel(data: dict[str, Any]) -> Panel:
             ("Tunnel IP", f"{'up' if tunnel_service.get('active_state') == 'active' else 'down'} | {_endpoint(tunnel_listener.get('address'), tunnel_listener.get('port'))}" if tunnel_listener else "unavailable"),
             ("Tunnel peer", _endpoint(tunnel_peer.get("address"), tunnel_peer.get("port")) if tunnel_peer else "unavailable"),
             ("Target", f"{data['target'].get('kind') or 'unknown'} | {target_capabilities}"),
-            ("Usage limits", limit_label),
+            ("Usage", f"{usage_provider}: {limit_label}"),
             ("Credits/tokens", f"{usage.get('reset_credits_available', 'n/a')} | {token_label}"),
             ("Commands", metric_activity),
         ],

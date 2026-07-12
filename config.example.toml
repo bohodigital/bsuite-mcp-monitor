@@ -24,9 +24,17 @@ process = "tunnel-client"
 startup_log_match = "tunnel-client startup summary"
 
 [usage]
+# `codex` can read a configured MCP tool or a command that returns the native
+# Codex app-server usage JSON. `claude-code` requires a command that returns
+# the normalized JSON contract documented in docs/mcp-monitoring.md.
+provider = "codex"
+format = "codex"
 # Optional: an operator-owned, read-only executable argument list that prints
 # the usage JSON expected by the configured MCP usage tool. Never use a shell.
 # command = ["/usr/local/bin/codex-usage-probe", "--usage"]
+# provider = "claude-code"
+# format = "normalized"
+# command = ["/usr/local/bin/claude-code-usage", "--json"]
 environment_variable = ""
 timeout_seconds = 10
 

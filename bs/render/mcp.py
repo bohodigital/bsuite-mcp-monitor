@@ -103,13 +103,14 @@ def _reset_time(value: Any) -> str:
 
 def _usage_panel(data: dict[str, Any]) -> Panel:
     usage = data.get("usage", {})
+    provider_label = str(usage.get("provider_label") or "Usage")
     table = Table(show_header=False, box=None, expand=True)
     table.add_column("Metric")
     table.add_column("Value")
     if not usage.get("available"):
         table.add_row("Status", "not configured" if usage.get("disabled") else "unavailable")
         table.add_row("Reason", str(usage.get("error") or usage.get("http_mcp_error") or "unknown"))
-        return Panel(table, title="Codex Usage Limits", box=box.ROUNDED, border_style="red")
+        return Panel(table, title=f"{provider_label} Usage Limits", box=box.ROUNDED, border_style="red")
     windows = usage.get("windows", {})
     for name in ("5h", "weekly"):
         window = windows.get(name, {})
@@ -124,7 +125,7 @@ def _usage_panel(data: dict[str, Any]) -> Panel:
     table.add_row("Source", str(usage.get("source") or "unknown"))
     if usage.get("http_mcp_error"):
         table.add_row("HTTP source", str(usage["http_mcp_error"]))
-    return Panel(table, title="Codex Usage Limits", box=box.ROUNDED, border_style="green" if not usage.get("warnings") else "yellow")
+    return Panel(table, title=f"{provider_label} Usage Limits", box=box.ROUNDED, border_style="green" if not usage.get("warnings") else "yellow")
 
 
 def _listeners_panel(data: dict[str, Any]) -> Panel:
