@@ -1,0 +1,10 @@
+.venv/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+config.toml
+.env
+*.mmdb
+build/
+dist/

@@ -1,0 +1,36 @@
+# Copy to ~/.config/bsuite/config.toml or /etc/bsuite/config.toml.
+# Use --config PATH or BS_CONFIG to select another profile.
+
+[profile]
+name = "production-mcp"
+
+[mcp]
+service = "my-mcp.service"
+host = "127.0.0.1"
+port = 9000
+health_path = "/health"
+rpc_path = "/mcp"
+# Leave either tool empty when the server does not provide it.
+mode_tool = "mcp_mode_status"
+usage_tool = ""
+
+[tunnel]
+service = "my-mcp-tunnel.service"
+host = "127.0.0.1"
+port = 9001
+health_path = "/"
+metrics_path = "/metrics"
+process = "tunnel-client"
+startup_log_match = "tunnel-client startup summary"
+
+[usage]
+# Optional: an operator-owned, read-only executable argument list that prints
+# the usage JSON expected by the configured MCP usage tool. Never use a shell.
+# command = ["/usr/local/bin/codex-usage-probe", "--usage"]
+environment_variable = ""
+timeout_seconds = 10
+
+[capabilities]
+# These markers are searched in systemd environment and tunnel startup records.
+write_environment = "MCP_ENABLE_WRITE_TOOLS=1"
+secret_environment = "MCP_ENABLE_SECRET_TOOLS=1"
