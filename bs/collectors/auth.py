@@ -94,7 +94,11 @@ def _command(check: AuthCheck) -> dict[str, Any]:
         return _result(check, "failed", "adapter command returned invalid JSON", latency_ms=latency)
     status = payload.get("status") if isinstance(payload, dict) else None
     if status not in {"healthy", "warning", "failed", "unknown"}:
-        return _result(check, "failed", "adapter command returned an invalid status", latency_ms=latency)
+        ok = payload.get("ok") if isinstance(payload, dict) else None
+        if isinstance(ok, bool):
+            status = "healthy" if ok else "failed"
+        else:
+            return _result(check, "failed", "adapter command returned an invalid status", latency_ms=latency)
     detail_code = payload.get("detail_code") if isinstance(payload.get("detail_code"), str) else ""
     detail = f"adapter result: {detail_code}" if re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", detail_code) else "custom verification completed"
     expires_at = payload.get("expires_at") if isinstance(payload.get("expires_at"), str) else None

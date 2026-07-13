@@ -28,7 +28,9 @@ world writable.
   It must emit one normalized JSON object with `status` set to `healthy`,
   `warning`, `failed`, or `unknown`. It can optionally include a bounded
   `detail_code`, `expires_at`, and string `capabilities`; arbitrary detail text
-  is discarded to prevent accidental credential disclosure.
+  is discarded to prevent accidental credential disclosure. Existing read-only
+  tools that emit only JSON `ok: true` or `ok: false` are also supported and
+  are mapped to healthy or failed without retaining their payload.
 
 Use `command` for Google, Umami API authorization, and custom workflows. The
 operator owns the command, its credential source, and its least-privilege API
