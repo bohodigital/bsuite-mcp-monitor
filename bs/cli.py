@@ -6,7 +6,8 @@ import sys
 import time
 from typing import Any
 
-from bs.auth_config import load_auth_config
+from bs.auth_config import auth_config_path, load_auth_config
+from bs.auth_intake import run_auth_intake
 from bs.config import ConfigError, MonitorConfig, load_monitor_config
 from bs.collectors.auth import collect_auth
 from bs.collectors.doctor import collect_doctor, install_linux_tools
@@ -294,15 +295,18 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Examples:\n"
             "  bs auth                         Run configured checks once\n"
+            "  bs auth init                    Create a portable auth profile\n"
             "  bs auth -w                      Refresh checks every 15 minutes\n"
             "  bs auth --config auth.toml      Use a named auth profile\n"
             "  bs auth -j                      Emit structured health JSON"
         ),
     )
+    auth.add_argument("auth_action", nargs="?", choices=("check", "init"), default="check", help="Run checks (default) or start the intake wizard")
     auth.add_argument("-w", "--watch", action="store_true", help="Refresh configured checks at a conservative interval")
     auth.add_argument("-i", "--interval", type=float, default=900.0, help="Seconds between refreshes; minimum 60")
     add_json_flag(auth, "authentication health")
     auth.add_argument("--config", help="Path to an authentication TOML profile")
+    auth.add_argument("--replace", action="store_true", help="Allow `bs auth init` to replace an existing profile")
 
     doctor = subparsers.add_parser(
         "doctor",
@@ -496,6 +500,11 @@ def run_mcp(args: argparse.Namespace) -> int:
 
 
 def run_auth(args: argparse.Namespace) -> int:
+    if args.auth_action == "init":
+        if args.json or args.watch:
+            print("bs: `auth init` does not support --json or --watch", file=sys.stderr)
+            return 2
+        return run_auth_intake(auth_config_path(args.config), replace=args.replace)
     try:
         config, source = load_auth_config(args.config)
     except ConfigError as exc:

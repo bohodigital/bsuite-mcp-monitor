@@ -166,7 +166,7 @@ the planned, private-only credential migration boundary.
 ```
 
 See [Contributing](CONTRIBUTING.md), [Security](SECURITY.md), and the
-[configuration reference](docs/mcp-monitoring.md).
+[documentation index](docs/README.md).
 
 ## License
 
