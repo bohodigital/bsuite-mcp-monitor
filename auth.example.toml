@@ -1,0 +1,36 @@
+# Copy to ~/.config/bsuite/auth.toml and keep this file free of secrets.
+# Values are credential references only. B-Suite reads optional tokens from its
+# own process environment or invokes an operator-owned adapter command.
+
+[[auth.check]]
+name = "cloudflare"
+provider = "cloudflare"
+reference = "cloudflare-api"
+purpose = "Verify Cloudflare API token health"
+environment_variable = "CLOUDFLARE_API_TOKEN"
+
+[[auth.check]]
+name = "github"
+provider = "github-cli"
+reference = "github-cli"
+purpose = "Verify GitHub CLI authentication"
+hostname = "github.com"
+
+[[auth.check]]
+name = "umami"
+provider = "http"
+reference = "umami-health"
+purpose = "Verify Umami HTTP health"
+url = "http://127.0.0.1:3000/health"
+expected_status = 200
+
+# Google and other provider-specific checks use a local, read-only adapter.
+# The adapter must print only normalized JSON, for example:
+# {"status":"healthy","detail_code":"read_only_verified"}
+# [[auth.check]]
+# name = "google-analytics"
+# provider = "command"
+# reference = "google-analytics-oauth"
+# purpose = "Verify Google Analytics read-only access"
+# command = ["/usr/local/bin/google-analytics-auth-check", "--json"]
+# timeout_seconds = 10

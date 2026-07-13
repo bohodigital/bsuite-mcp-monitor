@@ -6,7 +6,9 @@ import sys
 import time
 from typing import Any
 
+from bs.auth_config import load_auth_config
 from bs.config import ConfigError, MonitorConfig, load_monitor_config
+from bs.collectors.auth import collect_auth
 from bs.collectors.doctor import collect_doctor, install_linux_tools
 from bs.collectors.dashboard import collect_dashboard
 from bs.collectors.enrichment import DEFAULT_LOOKUP_LIMIT
@@ -17,6 +19,7 @@ from bs.collectors.security import collect_security
 from bs.collectors.ssh import collect_ssh
 from bs.collectors.status import collect_status
 from bs.render.dashboard import render_dash, render_dash_watch, render_status, render_watch
+from bs.render.auth import render_auth, render_auth_watch
 from bs.render.doctor import render_doctor
 from bs.render.fan import render_fan, render_fan_step
 from bs.render.mcp import render_mcp, render_mcp_watch
@@ -67,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  ssh              SSH server posture: service, listeners, config, keys, sessions\n"
             "  fan              Fan status, manual fan state, and automatic cooling control\n"
             "  mcp              MCP server, proxy, and tunnel health\n"
+            "  auth             Credential-reference and authentication health\n"
             "  doctor           Dependency and visibility self-check\n"
             "  security         Local hardening review"
         ),
@@ -85,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  bs fan set 3\n"
             "  bs mcp\n"
             "  bs mcp -w\n"
+            "  bs auth\n"
             "  bs mcp --no-resolve\n"
             "  bs doctor\n"
             "  bs security\n\n"
@@ -275,6 +280,29 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.add_argument("-n", "--lines", type=int, default=40, help="Journal lines to inspect")
     add_enrichment_flags(mcp, "tunnel remote")
     add_monitor_config_flag(mcp)
+
+    auth = subparsers.add_parser(
+        "auth",
+        help="Show configured credential-reference health",
+        allow_abbrev=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Run explicit, read-only authentication health checks.\n\n"
+            "B-Suite never reads secret values from TOML, prints tokens, or runs\n"
+            "unconfigured provider checks. Copy auth.example.toml to begin."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  bs auth                         Run configured checks once\n"
+            "  bs auth -w                      Refresh checks every 15 minutes\n"
+            "  bs auth --config auth.toml      Use a named auth profile\n"
+            "  bs auth -j                      Emit structured health JSON"
+        ),
+    )
+    auth.add_argument("-w", "--watch", action="store_true", help="Refresh configured checks at a conservative interval")
+    auth.add_argument("-i", "--interval", type=float, default=900.0, help="Seconds between refreshes; minimum 60")
+    add_json_flag(auth, "authentication health")
+    auth.add_argument("--config", help="Path to an authentication TOML profile")
 
     doctor = subparsers.add_parser(
         "doctor",
@@ -467,6 +495,27 @@ def run_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_auth(args: argparse.Namespace) -> int:
+    try:
+        config, source = load_auth_config(args.config)
+    except ConfigError as exc:
+        print(f"bs: invalid authentication configuration: {exc}", file=sys.stderr)
+        return 2
+
+    def collect() -> dict[str, Any]:
+        return collect_auth(config, source)
+
+    if args.watch:
+        render_auth_watch(collect, interval=max(args.interval, 60.0))
+        return 0
+    data = collect()
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+        return 2 if data["summary"]["failed"] else 0
+    render_auth(data)
+    return 2 if data["summary"]["failed"] else 0
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     profile = _monitor_config(args)
     if profile is None:
@@ -512,6 +561,8 @@ def main() -> int:
         return run_fan(args)
     if args.command == "mcp":
         return run_mcp(args)
+    if args.command == "auth":
+        return run_auth(args)
     if args.command == "doctor":
         return run_doctor(args)
     if args.command in {"security", "sec"}:

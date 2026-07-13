@@ -7,7 +7,8 @@
 B-Suite is a lightweight, all-in-one Linux terminal dashboard for operating
 MCP servers. It brings service health, local listeners, MCP runtime capability
 state, proxy or tunnel reachability, command telemetry, usage limits, network
-identity, and SSH posture into one practical operator view.
+identity, SSH posture, and explicit authentication-health checks into one
+practical operator view.
 
 > **Quick description:** a single command-line control room for the Linux host
 > that runs your MCP service, including its health, access posture, network
@@ -31,6 +32,7 @@ Commands      148 total | 0 errors
 
 - `bs mcp`: detailed MCP server, proxy, and tunnel dashboard.
 - `bs dash`: compact live system, network, SSH, and MCP overview.
+- `bs auth`: read-only health for explicitly configured credential references.
 - Configurable systemd units, loopback endpoints, health paths, MCP tool names,
   capability markers, and optional usage probes.
 - Listener safety checks, outbound TLS visibility, process resource use,
@@ -116,6 +118,8 @@ See [MCP configuration and monitoring](docs/mcp-monitoring.md) for every field.
 | `bs mcp -w -i 2` | Refresh the MCP dashboard every two seconds. |
 | `bs mcp -j` | Emit structured MCP monitoring JSON. |
 | `bs mcp --config monitor.toml` | Monitor a named deployment profile. |
+| `bs auth` | Check configured credential references without exposing secret values. |
+| `bs auth --config auth.toml` | Use a named authentication-health profile. |
 | `bs dash -w` | Live four-pane host and MCP summary. |
 | `bs doctor --config monitor.toml` | Validate host visibility for a profile. |
 | `bs security --config monitor.toml` | Combine SSH/firewall checks with MCP posture. |
@@ -137,6 +141,22 @@ adapter must emit B-Suite's normalized JSON contract.
 
 Usage collection is optional. Keep its command out of version control and treat
 the profile file as operator-owned configuration.
+
+## Authentication Health
+
+`bs auth` verifies only the checks you explicitly configure. It supports
+Cloudflare token verification, GitHub CLI authentication, loopback or HTTPS
+health endpoints such as Umami, and custom read-only adapters for Google or
+other providers. It never stores, displays, or accepts secret values in TOML.
+
+```bash
+mkdir -p ~/.config/bsuite
+cp auth.example.toml ~/.config/bsuite/auth.toml
+bs auth
+```
+
+See [authentication health](docs/auth-health.md) for the adapter contract and
+the planned, private-only credential migration boundary.
 
 ## Validate a Checkout
 
