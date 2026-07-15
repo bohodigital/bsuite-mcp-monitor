@@ -103,6 +103,13 @@ def _server(data: dict[str, Any]) -> Panel:
         "permitrootlogin",
         "kbdinteractiveauthentication",
         "authenticationmethods",
+        "maxauthtries",
+        "logingracetime",
+        "maxstartups",
+        "persourcemaxstartups",
+        "persourcepenalties",
+        "persourcenetblocksize",
+        "maxsessions",
         "allowusers",
         "allowgroups",
         "denyusers",
@@ -110,10 +117,74 @@ def _server(data: dict[str, Any]) -> Panel:
         "x11forwarding",
         "allowtcpforwarding",
         "allowagentforwarding",
+        "disableforwarding",
+        "gatewayports",
+        "permituserenvironment",
+        "permitemptypasswords",
         "loglevel",
     ):
         table.add_row(key, _value(summary.get(key)))
     return Panel(table, title="SSH Server", box=box.ROUNDED)
+
+
+def _attack_summary(data: dict[str, Any]) -> Panel:
+    attacks = data["attacks"]
+    if not attacks.get("available"):
+        return Panel(f"[yellow]{attacks.get('reason') or 'unavailable'}[/yellow]", title="SSH Attack Summary", box=box.ROUNDED)
+
+    counts = attacks["counts"]
+    level = attacks["level"]
+    style = {"clear": "green", "guarded": "yellow", "elevated": "dark_orange", "high": "red"}.get(level, "yellow")
+    table = Table.grid(expand=True)
+    table.add_column(ratio=1)
+    table.add_column(ratio=1)
+    table.add_row("Assessment", f"[{style}][bold]{level.upper()}[/bold][/{style}] over last {attacks['window_hours']}h")
+    table.add_row("Failed authentication", f"[{style}]{counts['failed']}[/{style}]")
+    table.add_row("Invalid users", str(counts["invalid_user"]))
+    table.add_row("Pre-auth disconnects", str(counts["preauth"]))
+    table.add_row("Daemon source penalties", str(counts["penalty"]))
+    table.add_row("Transport-only events", str(counts["transport"]))
+    table.add_row("Accepted logins", str(counts["accepted"]))
+    table.add_row("Observed window", f"{attacks.get('first_seen') or 'n/a'} to {attacks.get('last_seen') or 'n/a'}")
+    return Panel(table, title="SSH Attack Summary", subtitle="Journal-derived signals; not proof of compromise", box=box.ROUNDED)
+
+
+def _attack_sources(data: dict[str, Any]) -> Panel:
+    table = Table(box=box.SIMPLE_HEAVY, expand=True)
+    table.add_column("Source")
+    table.add_column("Signals", justify="right")
+    table.add_column("Failed", justify="right")
+    table.add_column("Invalid", justify="right")
+    table.add_column("Penalty", justify="right")
+    table.add_column("Last Seen")
+    table.add_column("Location / Host")
+    for source in data["attacks"].get("sources", []):
+        table.add_row(
+            source["ip"],
+            str(source["signals"]),
+            str(source["failed"]),
+            str(source["invalid_user"]),
+            str(source["penalty"]),
+            source["last_seen"],
+            _geo_label(source, "hostname"),
+        )
+    if not data["attacks"].get("sources"):
+        table.add_row("none", "", "", "", "", "", "")
+    return Panel(table, title="Top SSH Pressure Sources", subtitle="Top 12 by journal signal count; pre-auth signals are context, not attribution", box=box.ROUNDED)
+
+
+def _recent_threats(data: dict[str, Any]) -> Panel:
+    table = Table(box=box.SIMPLE_HEAVY, expand=True)
+    table.add_column("Time")
+    table.add_column("Signal")
+    table.add_column("User")
+    table.add_column("IP")
+    table.add_column("Detail")
+    for event in data["attacks"].get("recent", []):
+        table.add_row(event["time"], event["type"], event.get("user") or "-", event.get("ip") or "-", event["raw"].split(": ", 1)[-1])
+    if not data["attacks"].get("recent"):
+        table.add_row("none", "", "", "", "No recent non-accepted SSH signals")
+    return Panel(table, title="Latest SSH Threat Signals", box=box.ROUNDED)
 
 
 def _source_restrictions(data: dict[str, Any]) -> Panel:
@@ -183,7 +254,7 @@ def build_ssh_renderable(data: dict[str, Any]) -> Group:
     header = "B-Suite SSH"
     if data.get("geo_database"):
         header = f"{header}\nGeoLite DB: {data['geo_database']}"
-    return Group(header, _server(data), _source_restrictions(data), _firewall_rules(data), _authorized_keys(data), _current(data), _history(data))
+    return Group(header, _attack_summary(data), _attack_sources(data), _recent_threats(data), _server(data), _source_restrictions(data), _firewall_rules(data), _authorized_keys(data), _current(data), _history(data))
 
 
 def render_ssh(data: dict[str, Any]) -> None:
@@ -194,17 +265,18 @@ def render_ssh_watch(
     interval: float = 2.0,
     include_history: bool = False,
     lines: int = 80,
+    attack_hours: int = 24,
     resolve: bool = True,
     geo: bool = True,
     geo_db: str | None = None,
     lookup_limit: int = DEFAULT_LOOKUP_LIMIT,
 ) -> None:
     with Live(
-        build_ssh_renderable(collect_ssh(include_history=include_history, lines=lines, resolve=resolve, geo=geo, geo_db=geo_db, lookup_limit=lookup_limit)),
+        build_ssh_renderable(collect_ssh(include_history=include_history, lines=lines, attack_hours=attack_hours, resolve=resolve, geo=geo, geo_db=geo_db, lookup_limit=lookup_limit)),
         console=console,
         refresh_per_second=4,
         screen=True,
     ) as live:
         while True:
-            live.update(build_ssh_renderable(collect_ssh(include_history=include_history, lines=lines, resolve=resolve, geo=geo, geo_db=geo_db, lookup_limit=lookup_limit)))
+            live.update(build_ssh_renderable(collect_ssh(include_history=include_history, lines=lines, attack_hours=attack_hours, resolve=resolve, geo=geo, geo_db=geo_db, lookup_limit=lookup_limit)))
             time.sleep(interval)

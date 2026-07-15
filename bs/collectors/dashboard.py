@@ -34,6 +34,7 @@ def collect_dashboard(
         "ssh": collect_ssh(
             include_history=False,
             lines=12,
+            attack_hours=1,
             resolve=resolve,
             geo=geo,
             geo_db=geo_db,

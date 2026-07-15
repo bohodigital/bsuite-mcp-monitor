@@ -364,6 +364,8 @@ def _dash_network_panel(data: dict[str, Any]) -> Panel:
 
 def _dash_ssh_panel(data: dict[str, Any]) -> Panel:
     server = data["server"]
+    attacks = data.get("attacks", {})
+    attack_counts = attacks.get("counts", {})
     my_ips = ", ".join(_unique_addresses(server.get("listening_ips", []))) or "none"
     listening_ips = ", ".join(_endpoint(item.get("address"), item.get("port")) for item in server.get("listening_ips", [])) or "none"
     listeners = ", ".join(_endpoint(item["local"].get("address"), item["local"].get("port")) for item in server.get("listeners", [])) or "none"
@@ -383,6 +385,10 @@ def _dash_ssh_panel(data: dict[str, Any]) -> Panel:
             ("Wildcard binds", _compact(listeners)),
             ("Sessions", str(len(data["current"]))),
             ("Client IP", _compact(session_label)),
+            ("Attack level", f"{attacks.get('level', 'unknown')} | {attacks.get('window_hours', 'n/a')}h journal window"),
+            ("Failed auth", str(attack_counts.get("failed", "n/a"))),
+            ("Invalid users", str(attack_counts.get("invalid_user", "n/a"))),
+            ("Source penalties", str(attack_counts.get("penalty", "n/a"))),
             ("Authentication", f"keys {server['summary'].get('pubkeyauthentication') or 'n/a'} | password {server['summary'].get('passwordauthentication') or 'n/a'} | root {server['summary'].get('permitrootlogin') or 'n/a'}"),
             ("Restrictions", f"{len(server['source_restrictions'])} source | {len(server['firewall_rules'])} firewall"),
             ("Authorized keys", str(len(server["authorized_keys"]))),

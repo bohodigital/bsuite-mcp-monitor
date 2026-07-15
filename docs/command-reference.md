@@ -29,7 +29,8 @@ automation and contains no configured secret values.
 | `bs net` / `bs network` | Interfaces, addresses, routes, DNS, listeners, connections, and traffic. |
 | `bs net -w -i 2` | Live network dashboard. |
 | `bs net -j` | Structured network JSON. |
-| `bs ssh` | SSH service, listeners, effective settings, keys, and sessions. |
+| `bs ssh` | SSH exposure, 24-hour attack summary, listeners, settings, keys, and sessions. |
+| `bs ssh --attack-window 6` | Summarize the last six hours of SSH attack signals. |
 | `bs ssh --history -n 80` | Add recent SSH journal events. |
 | `bs ssh -w --history` | Live SSH dashboard with history. |
 

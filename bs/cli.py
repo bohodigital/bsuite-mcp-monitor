@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  status, st, stat System dashboard: CPU, memory, disks, mounts, temps, power, processes\n"
             "  dash             Summary dashboard: system, network, SSH, and MCP services\n"
             "  network, net     Network dashboard: interfaces, routes, DNS, sockets, traffic rates\n"
-            "  ssh              SSH server posture: service, listeners, config, keys, sessions\n"
+            "  ssh              SSH exposure, attack activity, config, keys, and sessions\n"
             "  fan              Fan status, manual fan state, and automatic cooling control\n"
             "  mcp              MCP server, proxy, and tunnel health\n"
             "  auth             Credential-reference and authentication health\n"
@@ -181,20 +181,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     ssh = subparsers.add_parser(
         "ssh",
-        help="Show current and recent SSH activity",
+        help="Show SSH exposure, attack activity, and current sessions",
         allow_abbrev=False,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Show current SSH connections and recent SSH authentication events.\n\n"
-            "Default output focuses on the SSH server: service state, listeners,\n"
-            "effective sshd config, source/user restrictions, and authorized key\n"
-            "fingerprints. Current sessions are detected from sockets on port 22.\n"
-            "History is parsed from the ssh/sshd systemd journal with --history."
+            "Show current SSH connections, exposure, and recent attack activity.\n\n"
+            "Default output includes a journal-derived attack summary, service state,\n"
+            "listeners, effective sshd config, source/user restrictions, and authorized\n"
+            "key fingerprints. Current sessions are detected from sockets on port 22.\n"
+            "Use --history for the detailed recent authentication event stream."
         ),
         epilog=(
             "Examples:\n"
-            "  bs ssh                         SSH server posture and current sessions\n"
-            "  bs ssh --history               Include recent auth events\n"
+            "  bs ssh                         SSH exposure and 24-hour attack summary\n"
+            "  bs ssh --attack-window 6       Summarize the last six hours\n"
+            "  bs ssh --history               Include detailed recent auth events\n"
             "  bs ssh -w --history            Live SSH dashboard with history\n"
             "  bs ssh --history -n 200        Inspect more journal lines\n"
             "  bs ssh                         Includes reverse DNS and GeoLite by default\n"
@@ -210,6 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_json_flag(ssh, "SSH")
     ssh.add_argument("-H", "--history", action="store_true", help="Include recent SSH journal events")
     ssh.add_argument("-n", "--lines", type=int, default=80, help="Journal lines to inspect for SSH history")
+    ssh.add_argument("--attack-window", type=int, default=24, metavar="HOURS", help="Hours of SSH journal data to summarize; default 24")
     add_enrichment_flags(ssh)
 
     fan = subparsers.add_parser(
@@ -411,6 +413,7 @@ def run_ssh(args: argparse.Namespace) -> int:
             interval=max(args.interval, 0.5),
             include_history=args.history,
             lines=args.lines,
+            attack_hours=args.attack_window,
             resolve=args.resolve,
             geo=args.geo,
             geo_db=args.geo_db,
@@ -421,6 +424,7 @@ def run_ssh(args: argparse.Namespace) -> int:
     data = collect_ssh(
         include_history=args.history,
         lines=args.lines,
+        attack_hours=args.attack_window,
         resolve=args.resolve,
         geo=args.geo,
         geo_db=args.geo_db,

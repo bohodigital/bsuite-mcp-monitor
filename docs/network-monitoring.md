@@ -19,6 +19,7 @@ bs dash --no-resolve
 bs dash --no-geo
 
 bs ssh
+bs ssh --attack-window 6
 bs ssh --history
 bs ssh -w --history
 bs ssh --no-resolve
@@ -63,6 +64,15 @@ bs net
 - Owning `sshd` PID/process when visible
 - Approximate connection uptime from process age
 - Recent accepted, failed, and disconnected SSH events with `--history`
+- A journal-derived attack summary for the last 24 hours by default
+- Failed authentication, invalid-user, pre-auth disconnect, transport, and
+  daemon source-penalty counts, with a bounded recent-event list
+- Top observed SSH pressure sources, including reverse DNS and GeoLite context
+  by default. Pre-auth signals are context, not attribution.
+- `--attack-window HOURS` to change the attack-summary window
+- Effective connection-protection settings including `MaxAuthTries`,
+  `LoginGraceTime`, `MaxStartups`, per-source startup/penalty controls, and
+  session limits
 - Reverse DNS lookup for public remote IPs by default
 - GeoLite location/ASN lookup by default when a database is available
 - Local endpoint location/classification alongside each remote endpoint
@@ -72,7 +82,8 @@ bs net
 
 - A compact pane for system status
 - A compact pane for network addresses, routing, DNS, and an established remote
-- A compact pane for SSH service state, listening IPs, and current sessions
+- A compact pane for SSH service state, listening IPs, current sessions, and
+  one-hour attack pressure
 - A compact pane for MCP/tunnel services, outbound connection, and journal health
 - Reverse DNS and GeoLite context by default for public remote IPs
 
@@ -138,6 +149,7 @@ You can also pass the database directly:
 ```bash
 bs net --geo-db /usr/share/GeoIP/GeoLite2-City.mmdb
 bs ssh --history --geo-db /usr/share/GeoIP/GeoLite2-City.mmdb
+bs ssh --attack-window 168
 ```
 
 Reverse DNS and GeoLite are on by default. Use opt-out flags when needed:
@@ -166,6 +178,9 @@ to this repo.
 ## Notes
 
 - IP geolocation is approximate. Treat it as context, not proof.
+- SSH attack totals are journal events, not a count of confirmed compromise.
+  One scan can produce several related events, such as an invalid user, failed
+  password, and pre-auth disconnect. B-Suite keeps those categories separate.
 - Private LAN addresses like `192.168.x.x` are intentionally not geolocated.
 - `bs net` can run unprivileged for status views.
 - Full packet capture usually requires root or capture capabilities.

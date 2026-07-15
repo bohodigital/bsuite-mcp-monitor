@@ -6,6 +6,8 @@ import hashlib
 import os
 import pwd
 import re
+import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,7 +22,59 @@ from bs.collectors.result import meta
 _ACCEPT_RE = re.compile(r"Accepted (?P<method>\S+) for (?P<user>\S+) from (?P<ip>\S+) port (?P<port>\d+)")
 _FAIL_RE = re.compile(r"Failed (?P<method>\S+) for (invalid user )?(?P<user>\S+) from (?P<ip>\S+) port (?P<port>\d+)")
 _DISCONNECT_RE = re.compile(r"Disconnected from (invalid user )?(?P<user>\S+ )?(?P<ip>\S+) port (?P<port>\d+)")
+_INVALID_USER_RE = re.compile(r"Invalid user (?P<user>\S+) from (?P<ip>\S+) port (?P<port>\d+)")
+_PREAUTH_RE = re.compile(
+    r"(?P<action>Connection (?:closed|reset)|Disconnected) (?:from|by) "
+    r"(?:(?P<state>invalid user|authenticating user) )?(?P<user>\S+ )?(?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+)(?: \[preauth\])?"
+)
+_PENALTY_RE = re.compile(r"(?:new |from \[)(?P<ip>[0-9A-Fa-f:.]+)(?:/\d+|\])")
 _KEY_TYPES = ("ssh-", "ecdsa-", "sk-")
+_JOURNAL_CACHE_TTL_SECONDS = 15.0
+_JOURNAL_CACHE: dict[int, tuple[float, str | None]] = {}
+
+
+def _parse_journal_event(line: str) -> dict[str, Any] | None:
+    """Normalize the OpenSSH journal formats used for authentication and abuse signals."""
+    event_type = None
+    match = _ACCEPT_RE.search(line)
+    if match:
+        event_type = "accepted"
+    else:
+        match = _FAIL_RE.search(line)
+        if match:
+            event_type = "failed"
+        else:
+            match = _INVALID_USER_RE.search(line)
+            if match:
+                event_type = "invalid_user"
+            else:
+                match = _DISCONNECT_RE.search(line)
+                if match:
+                    event_type = "preauth"
+                else:
+                    match = _PREAUTH_RE.search(line)
+                    if match:
+                        event_type = "preauth"
+                    else:
+                        match = _PENALTY_RE.search(line) if "penalty" in line.lower() else None
+                        if match:
+                            event_type = "penalty"
+                        elif "kex_exchange_identification" in line or "banner exchange" in line.lower():
+                            event_type = "transport"
+                        else:
+                            return None
+
+    data = match.groupdict() if match else {}
+    ip = data.get("ip")
+    return {
+        "time": line.split()[0],
+        "type": event_type,
+        "user": (data.get("user") or "").strip(),
+        "method": data.get("method"),
+        "ip": ip,
+        "port": int(data["port"]) if data.get("port") else None,
+        "raw": line,
+    }
 
 
 def _hostname(ip: str) -> str | None:
@@ -118,6 +172,13 @@ def collect_ssh_server() -> dict[str, Any]:
             "permitrootlogin": values.get("permitrootlogin"),
             "kbdinteractiveauthentication": values.get("kbdinteractiveauthentication"),
             "authenticationmethods": values.get("authenticationmethods"),
+            "maxauthtries": values.get("maxauthtries"),
+            "logingracetime": values.get("logingracetime"),
+            "maxstartups": values.get("maxstartups"),
+            "persourcemaxstartups": values.get("persourcemaxstartups"),
+            "persourcepenalties": values.get("persourcepenalties"),
+            "persourcenetblocksize": values.get("persourcenetblocksize"),
+            "maxsessions": values.get("maxsessions"),
             "allowusers": values.get("allowusers", "not set"),
             "allowgroups": values.get("allowgroups", "not set"),
             "denyusers": values.get("denyusers", "not set"),
@@ -126,6 +187,10 @@ def collect_ssh_server() -> dict[str, Any]:
             "x11forwarding": values.get("x11forwarding"),
             "allowtcpforwarding": values.get("allowtcpforwarding"),
             "allowagentforwarding": values.get("allowagentforwarding"),
+            "disableforwarding": values.get("disableforwarding"),
+            "gatewayports": values.get("gatewayports"),
+            "permituserenvironment": values.get("permituserenvironment"),
+            "permitemptypasswords": values.get("permitemptypasswords"),
             "usedns": values.get("usedns"),
             "loglevel": values.get("loglevel"),
         },
@@ -280,31 +345,10 @@ def collect_ssh_history(
         return []
     events = []
     for line in output.splitlines():
-        event_type = None
-        match = _ACCEPT_RE.search(line)
-        if match:
-            event_type = "accepted"
-        else:
-            match = _FAIL_RE.search(line)
-            if match:
-                event_type = "failed"
-            else:
-                match = _DISCONNECT_RE.search(line)
-                if match:
-                    event_type = "disconnect"
-        if not match:
+        item = _parse_journal_event(line)
+        if not item:
             continue
-        data = match.groupdict()
-        ip = data.get("ip")
-        item: dict[str, Any] = {
-            "time": line.split()[0],
-            "type": event_type,
-            "user": (data.get("user") or "").strip(),
-            "method": data.get("method"),
-            "ip": ip,
-            "port": int(data["port"]) if data.get("port") else None,
-            "raw": line,
-        }
+        ip = item.get("ip")
         if resolve and ip:
             item["hostname"] = reverse_dns(ip, lookup_budget)
         if geo and ip:
@@ -313,9 +357,88 @@ def collect_ssh_history(
     return events
 
 
+def _journal_output(hours: int) -> str | None:
+    window_hours = max(hours, 1)
+    cached = _JOURNAL_CACHE.get(window_hours)
+    if cached and time.monotonic() - cached[0] < _JOURNAL_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    since = f"{window_hours} hours ago"
+    args = ["journalctl", "-u", "ssh", "-u", "sshd", "--since", since, "--no-pager", "--output", "short-iso"]
+    output = run_command(["sudo", "-n", *args], timeout=8.0) or run_command(args, timeout=8.0)
+    _JOURNAL_CACHE[window_hours] = (time.monotonic(), output)
+    return output
+
+
+def collect_ssh_attacks(
+    hours: int = 24,
+    resolve: bool = True,
+    geo: bool = True,
+    geo_db: str | None = None,
+    lookup_budget: LookupBudget | None = None,
+) -> dict[str, Any]:
+    """Summarize recent SSH abuse signals without treating transport noise as a compromise."""
+    output = _journal_output(hours)
+    empty_counts = {name: 0 for name in ("accepted", "failed", "invalid_user", "preauth", "penalty", "transport")}
+    if output is None:
+        return {
+            "available": False,
+            "reason": "SSH journal unavailable",
+            "window_hours": max(hours, 1),
+            "counts": empty_counts,
+            "sources": [],
+            "recent": [],
+            "level": "unknown",
+        }
+
+    events = [event for line in output.splitlines() if (event := _parse_journal_event(line))]
+    counts = Counter(event["type"] for event in events)
+    source_counts: dict[str, Counter[str]] = {}
+    source_last_seen: dict[str, str] = {}
+    for event in events:
+        ip = event.get("ip")
+        if not ip or event["type"] not in {"failed", "invalid_user", "preauth", "penalty", "transport"}:
+            continue
+        source_counts.setdefault(ip, Counter())[event["type"]] += 1
+        source_last_seen[ip] = event["time"]
+
+    sources = []
+    for ip, signals in sorted(source_counts.items(), key=lambda item: (sum(item[1].values()), item[0]), reverse=True)[:12]:
+        item: dict[str, Any] = {
+            "ip": ip,
+            "signals": sum(signals.values()),
+            "failed": signals["failed"],
+            "invalid_user": signals["invalid_user"],
+            "preauth": signals["preauth"],
+            "penalty": signals["penalty"],
+            "transport": signals["transport"],
+            "last_seen": source_last_seen[ip],
+        }
+        if resolve:
+            item["hostname"] = reverse_dns(ip, lookup_budget)
+        if geo:
+            item["geo"] = geo_lookup(ip, geo_db, lookup_budget)
+        sources.append(item)
+
+    failed = counts["failed"]
+    level = "clear" if not failed else "guarded" if failed < 25 else "elevated" if failed < 250 else "high"
+    return {
+        "available": True,
+        "reason": None,
+        "window_hours": max(hours, 1),
+        "counts": {name: counts[name] for name in empty_counts},
+        "sources": sources,
+        "recent": [event for event in events if event["type"] != "accepted"][-12:],
+        "level": level,
+        "first_seen": events[0]["time"] if events else None,
+        "last_seen": events[-1]["time"] if events else None,
+    }
+
+
 def collect_ssh(
     include_history: bool = False,
     lines: int = 80,
+    attack_hours: int = 24,
     resolve: bool = True,
     geo: bool = True,
     geo_db: str | None = None,
@@ -335,5 +458,6 @@ def collect_ssh(
         "lookup_budget": budget.summary(),
         "server": server,
         "current": collect_current_ssh(resolve=resolve, geo=geo, geo_db=geo_db, lookup_budget=budget),
+        "attacks": collect_ssh_attacks(hours=attack_hours, resolve=resolve, geo=geo, geo_db=geo_db, lookup_budget=budget),
         "history": collect_ssh_history(lines=lines, resolve=resolve, geo=geo, geo_db=geo_db, lookup_budget=budget) if include_history else [],
     }

@@ -31,7 +31,7 @@ Commands      148 total | 0 errors
 ## Highlights
 
 - `bs mcp`: detailed MCP server, proxy, and tunnel dashboard.
-- `bs dash`: compact live system, network, SSH, and MCP overview.
+- `bs dash`: compact live system, network, SSH attack pressure, and MCP overview.
 - `bs auth`: read-only health for explicitly configured credential references.
 - Configurable systemd units, loopback endpoints, health paths, MCP tool names,
   capability markers, and optional usage probes.
@@ -124,7 +124,8 @@ See [MCP configuration and monitoring](docs/mcp-monitoring.md) for every field.
 | `bs doctor --config monitor.toml` | Validate host visibility for a profile. |
 | `bs security --config monitor.toml` | Combine SSH/firewall checks with MCP posture. |
 | `bs net` | Inspect local addresses, routes, sockets, and traffic. |
-| `bs ssh --history` | Inspect SSH listeners, sessions, and recent auth events. |
+| `bs ssh` | Inspect SSH exposure, 24-hour attack pressure, listeners, keys, and sessions. |
+| `bs ssh --attack-window 6 --history` | Inspect a six-hour attack window and detailed recent auth events. |
 
 Hostname and GeoLite enrichment are on by default for public remote endpoints.
 Use `--no-resolve` or `--no-geo` on `mcp`, `dash`, `net`, or `ssh` to disable
