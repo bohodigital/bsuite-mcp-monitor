@@ -31,6 +31,11 @@ automation and contains no configured secret values.
 | `bs net -j` | Structured network JSON. |
 | `bs ssh` | SSH exposure, 24-hour attack summary, listeners, settings, keys, and sessions. |
 | `bs ssh --attack-window 6` | Summarize the last six hours of SSH attack signals. |
+| `bs ssh --audit` | Add guided hardening recommendations without changing policy. |
+| `bs ssh --write-baseline PATH` | Record expected listeners, key fingerprints, and effective SSH controls. |
+| `bs ssh --baseline PATH` | Report drift from an expected SSH baseline. |
+| `bs ssh --snapshot PATH --trend PATH` | Record and display count-only SSH attack trends. |
+| `bs ssh --alert-command PATH --alert-level high` | Run an opt-in absolute-path alert command when pressure is high. |
 | `bs ssh --history -n 80` | Add recent SSH journal events. |
 | `bs ssh -w --history` | Live SSH dashboard with history. |
 

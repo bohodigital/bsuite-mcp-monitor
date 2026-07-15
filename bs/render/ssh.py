@@ -187,6 +187,62 @@ def _recent_threats(data: dict[str, Any]) -> Panel:
     return Panel(table, title="Latest SSH Threat Signals", box=box.ROUNDED)
 
 
+def _baseline(data: dict[str, Any]) -> Panel | None:
+    baseline = data.get("baseline")
+    written = data.get("baseline_write")
+    if not baseline and not written:
+        return None
+    table = Table(box=box.SIMPLE_HEAVY, expand=True)
+    table.add_column("State")
+    table.add_column("Detail")
+    if written:
+        table.add_row("written", written["path"])
+    if baseline:
+        table.add_row(baseline["status"], baseline["path"])
+        for change in baseline.get("changes", [])[:12]:
+            table.add_row(change.get("field", "baseline"), str(change.get("observed") or change.get("detail") or "changed"))
+    return Panel(table, title="SSH Baseline", subtitle="Expected listener, control, and authorized-key fingerprint state", box=box.ROUNDED)
+
+
+def _trend(data: dict[str, Any]) -> Panel | None:
+    trend = data.get("trend")
+    snapshot = data.get("snapshot")
+    if not trend and not snapshot:
+        return None
+    table = Table(box=box.SIMPLE_HEAVY, expand=True)
+    table.add_column("Time")
+    table.add_column("Level")
+    table.add_column("Failed", justify="right")
+    table.add_column("Invalid", justify="right")
+    table.add_column("Penalties", justify="right")
+    if snapshot:
+        table.add_row(snapshot["record"]["timestamp"], snapshot["record"].get("level", "unknown"), str(snapshot["record"]["counts"].get("failed", 0)), str(snapshot["record"]["counts"].get("invalid_user", 0)), str(snapshot["record"]["counts"].get("penalty", 0)))
+    if trend:
+        for record in trend.get("records", [])[-12:]:
+            counts = record.get("counts", {})
+            table.add_row(record.get("timestamp", "n/a"), record.get("level", "unknown"), str(counts.get("failed", 0)), str(counts.get("invalid_user", 0)), str(counts.get("penalty", 0)))
+    return Panel(table, title="SSH Attack Trend", subtitle=(trend or snapshot).get("path", "count-only snapshots"), box=box.ROUNDED)
+
+
+def _audit(data: dict[str, Any]) -> Panel | None:
+    findings = data.get("audit")
+    alert = data.get("alert")
+    if findings is None and not alert:
+        return None
+    table = Table(box=box.SIMPLE_HEAVY, expand=True)
+    table.add_column("Severity")
+    table.add_column("Finding")
+    table.add_column("Recommended action")
+    for item in findings or []:
+        style = {"high": "red", "medium": "yellow", "low": "cyan"}.get(item["severity"], "")
+        table.add_row(f"[{style}]{item['severity']}[/{style}]" if style else item["severity"], item["title"], item["recommendation"])
+    if alert:
+        table.add_row("alert", alert["status"], alert.get("reason") or f"threshold {alert.get('minimum_level', 'n/a')}")
+    if not findings and not alert:
+        table.add_row("clear", "No guided findings", "Keep the baseline and snapshots current")
+    return Panel(table, title="SSH Audit & Alert", subtitle="Recommendations only; B-Suite does not alter SSH or firewall policy", box=box.ROUNDED)
+
+
 def _source_restrictions(data: dict[str, Any]) -> Panel:
     table = Table(box=box.SIMPLE_HEAVY, expand=True)
     table.add_column("File")
@@ -254,7 +310,8 @@ def build_ssh_renderable(data: dict[str, Any]) -> Group:
     header = "B-Suite SSH"
     if data.get("geo_database"):
         header = f"{header}\nGeoLite DB: {data['geo_database']}"
-    return Group(header, _attack_summary(data), _attack_sources(data), _recent_threats(data), _server(data), _source_restrictions(data), _firewall_rules(data), _authorized_keys(data), _current(data), _history(data))
+    panels = [_attack_summary(data), _attack_sources(data), _recent_threats(data), _baseline(data), _trend(data), _audit(data), _server(data), _source_restrictions(data), _firewall_rules(data), _authorized_keys(data), _current(data), _history(data)]
+    return Group(header, *(panel for panel in panels if panel is not None))
 
 
 def render_ssh(data: dict[str, Any]) -> None:

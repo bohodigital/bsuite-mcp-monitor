@@ -18,6 +18,7 @@ from bs.collectors.mcp import collect_mcp
 from bs.collectors.network_detail import collect_network_detail
 from bs.collectors.security import collect_security
 from bs.collectors.ssh import collect_ssh
+from bs.collectors.ssh_monitoring import append_snapshot, compare_baseline, read_trend, run_alert, ssh_audit, write_baseline
 from bs.collectors.status import collect_status
 from bs.render.dashboard import render_dash, render_dash_watch, render_status, render_watch
 from bs.render.auth import render_auth, render_auth_watch
@@ -196,6 +197,10 @@ def build_parser() -> argparse.ArgumentParser:
             "  bs ssh                         SSH exposure and 24-hour attack summary\n"
             "  bs ssh --attack-window 6       Summarize the last six hours\n"
             "  bs ssh --history               Include detailed recent auth events\n"
+            "  bs ssh --audit                 Recommend next hardening actions\n"
+            "  bs ssh --write-baseline PATH   Record expected SSH exposure and identities\n"
+            "  bs ssh --baseline PATH         Compare against an expected baseline\n"
+            "  bs ssh --snapshot PATH         Append a count-only trend snapshot\n"
             "  bs ssh -w --history            Live SSH dashboard with history\n"
             "  bs ssh --history -n 200        Inspect more journal lines\n"
             "  bs ssh                         Includes reverse DNS and GeoLite by default\n"
@@ -212,6 +217,14 @@ def build_parser() -> argparse.ArgumentParser:
     ssh.add_argument("-H", "--history", action="store_true", help="Include recent SSH journal events")
     ssh.add_argument("-n", "--lines", type=int, default=80, help="Journal lines to inspect for SSH history")
     ssh.add_argument("--attack-window", type=int, default=24, metavar="HOURS", help="Hours of SSH journal data to summarize; default 24")
+    ssh.add_argument("--audit", action="store_true", help="Add guided SSH hardening recommendations")
+    ssh.add_argument("--baseline", metavar="PATH", help="Compare current SSH state to a baseline JSON file")
+    ssh.add_argument("--write-baseline", metavar="PATH", help="Write an expected SSH state baseline JSON file")
+    ssh.add_argument("--replace-baseline", action="store_true", help="Allow --write-baseline to replace an existing file")
+    ssh.add_argument("--snapshot", metavar="PATH", help="Append a count-only SSH attack snapshot JSONL record")
+    ssh.add_argument("--trend", metavar="PATH", help="Show recent count-only SSH snapshots from a JSONL file")
+    ssh.add_argument("--alert-command", metavar="PATH", help="Run an absolute-path alert command when the attack level meets the threshold")
+    ssh.add_argument("--alert-level", choices=["guarded", "elevated", "high"], default="high", help="Minimum attack level for --alert-command; default high")
     add_enrichment_flags(ssh)
 
     fan = subparsers.add_parser(
@@ -408,7 +421,14 @@ def run_network(args: argparse.Namespace) -> int:
 
 
 def run_ssh(args: argparse.Namespace) -> int:
+    workflow_flags = (args.write_baseline, args.baseline, args.snapshot, args.trend, args.audit, args.alert_command)
+    if args.replace_baseline and not args.write_baseline:
+        print("bs ssh: --replace-baseline requires --write-baseline", file=sys.stderr)
+        return 2
     if args.watch:
+        if any(workflow_flags):
+            print("bs ssh: --watch cannot be combined with baseline, trend, audit, snapshot, or alert workflows", file=sys.stderr)
+            return 2
         render_ssh_watch(
             interval=max(args.interval, 0.5),
             include_history=args.history,
@@ -430,6 +450,22 @@ def run_ssh(args: argparse.Namespace) -> int:
         geo_db=args.geo_db,
         lookup_limit=args.lookup_limit,
     )
+    try:
+        if args.write_baseline:
+            data["baseline_write"] = write_baseline(args.write_baseline, data, replace=args.replace_baseline)
+        if args.baseline:
+            data["baseline"] = compare_baseline(args.baseline, data)
+        if args.snapshot:
+            data["snapshot"] = append_snapshot(args.snapshot, data["attacks"])
+        if args.trend:
+            data["trend"] = read_trend(args.trend)
+        if args.alert_command:
+            data["alert"] = run_alert(args.alert_command, args.alert_level, data["attacks"])
+    except ValueError as exc:
+        print(f"bs ssh: {exc}", file=sys.stderr)
+        return 2
+    if args.audit:
+        data["audit"] = ssh_audit(data)
     if args.json:
         print(json.dumps(data, indent=2, sort_keys=True))
         return 0

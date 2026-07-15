@@ -32,6 +32,8 @@ Commands      148 total | 0 errors
 
 - `bs mcp`: detailed MCP server, proxy, and tunnel dashboard.
 - `bs dash`: compact live system, network, SSH attack pressure, and MCP overview.
+- `bs ssh`: exposure, attack pressure, baseline drift, trends, and guided audit
+  for the host's SSH service.
 - `bs auth`: read-only health for explicitly configured credential references.
 - Configurable systemd units, loopback endpoints, health paths, MCP tool names,
   capability markers, and optional usage probes.
@@ -126,6 +128,7 @@ See [MCP configuration and monitoring](docs/mcp-monitoring.md) for every field.
 | `bs net` | Inspect local addresses, routes, sockets, and traffic. |
 | `bs ssh` | Inspect SSH exposure, 24-hour attack pressure, listeners, keys, and sessions. |
 | `bs ssh --attack-window 6 --history` | Inspect a six-hour attack window and detailed recent auth events. |
+| `bs ssh --audit --baseline PATH` | Compare expected SSH state and get non-destructive hardening guidance. |
 
 Hostname and GeoLite enrichment are on by default for public remote endpoints.
 Use `--no-resolve` or `--no-geo` on `mcp`, `dash`, `net`, or `ssh` to disable

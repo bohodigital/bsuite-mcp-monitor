@@ -20,6 +20,11 @@ bs dash --no-geo
 
 bs ssh
 bs ssh --attack-window 6
+bs ssh --audit
+bs ssh --write-baseline ~/.local/state/bsuite/ssh-baseline.json
+bs ssh --baseline ~/.local/state/bsuite/ssh-baseline.json
+bs ssh --snapshot ~/.local/state/bsuite/ssh-attacks.jsonl
+bs ssh --trend ~/.local/state/bsuite/ssh-attacks.jsonl
 bs ssh --history
 bs ssh -w --history
 bs ssh --no-resolve
@@ -70,6 +75,18 @@ bs net
 - Top observed SSH pressure sources, including reverse DNS and GeoLite context
   by default. Pre-auth signals are context, not attribution.
 - `--attack-window HOURS` to change the attack-summary window
+- `--audit` for guided hardening recommendations. It never changes daemon or
+  firewall policy.
+- Expected-state baselines for listeners, effective controls, and authorized-key
+  fingerprints. Use `--write-baseline PATH` once, then `--baseline PATH` on
+  later checks to identify drift.
+- Count-only JSONL snapshots and trend rendering with `--snapshot PATH` and
+  `--trend PATH`. Snapshot records do not contain IP addresses, users, keys, or
+  raw journal lines.
+- An opt-in alert hook using `--alert-command /absolute/path`. The command runs
+  only when the attack level meets `--alert-level` and receives no inherited
+  secrets. It is given `BS_SSH_LEVEL`, `BS_SSH_WINDOW_HOURS`, `BS_SSH_FAILED`,
+  `BS_SSH_INVALID_USERS`, and `BS_SSH_PENALTIES`.
 - Effective connection-protection settings including `MaxAuthTries`,
   `LoginGraceTime`, `MaxStartups`, per-source startup/penalty controls, and
   session limits
@@ -151,6 +168,35 @@ bs net --geo-db /usr/share/GeoIP/GeoLite2-City.mmdb
 bs ssh --history --geo-db /usr/share/GeoIP/GeoLite2-City.mmdb
 bs ssh --attack-window 168
 ```
+
+## SSH Operations Workflow
+
+Record a known-good baseline after an intentional SSH policy review:
+
+```bash
+bs ssh --write-baseline ~/.local/state/bsuite/ssh-baseline.json
+```
+
+Compare every later check to that state and append a count-only trend record:
+
+```bash
+bs ssh --baseline ~/.local/state/bsuite/ssh-baseline.json \
+  --snapshot ~/.local/state/bsuite/ssh-attacks.jsonl \
+  --trend ~/.local/state/bsuite/ssh-attacks.jsonl \
+  --audit
+```
+
+For scheduled alerts, create an operator-owned executable and configure an
+absolute path. B-Suite does not invoke a shell or pass secret-bearing
+environment variables to it:
+
+```bash
+bs ssh --alert-command /usr/local/libexec/bs-ssh-alert --alert-level high
+```
+
+Do not combine `--watch` with baseline, trend, audit, snapshot, or alert
+workflows; these are intentionally one-shot operations to prevent repeated
+writes or notifications and to keep live output unambiguous.
 
 Reverse DNS and GeoLite are on by default. Use opt-out flags when needed:
 
