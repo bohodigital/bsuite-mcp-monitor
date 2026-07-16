@@ -10,6 +10,7 @@ commands. This index covers every public B-Suite capability.
 | Authentication checks, intake wizard, templates, and adapters | [Authentication health](auth-health.md) |
 | Configuration locations, permissions, and portability | [Configuration](configuration.md) |
 | Network interfaces, routes, sockets, DNS, and enrichment | [Network monitoring](network-monitoring.md) |
+| SSH setup and full dashboard examples | [SSH screenshots](network-monitoring.md#ssh-screenshots) |
 | Host visibility, dependency installation, and security review | [Doctor and security](doctor-security.md) |
 | Fan state and automatic cooling | [Fan controller](fan-controller.md) |
 
